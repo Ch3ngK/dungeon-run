@@ -35,7 +35,7 @@ const DEFAULT_STATS: PlayerStats = {
 const UNLOCK_LEVEL: Record<string, number> = {
   "forest-ruins": 1,
   "ice-temple": 2,
-  "lava-caverns": 4,
+  "lava-cavern": 4,
   "shadow-fortress": 6,
 };
 
