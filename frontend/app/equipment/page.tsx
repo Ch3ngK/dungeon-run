@@ -2,10 +2,11 @@
 import { useEffect, useMemo, useState } from "react";
 import "@/app/tooltip.css";
 
-// ... [Keep your existing types and constants here] ...
+/* ---------------- TYPES & CONSTANTS ---------------- */
 type Slot = "head" | "leftHand" | "rightHand";
 type ItemType = "helmet" | "armor" | "weapon";
 type Item = { id: string; name: string; icon: string; type: ItemType; armor?: number; damage?: number; };
+
 const WORKOUT_BASE_STR = 10;
 const WORKOUT_BASE_AGI = 0;
 const ATK_PER_STR_POINT = 1;
@@ -21,6 +22,7 @@ export default function EquipmentPage() {
   const [xp, setXp] = useState(0);
   const [workout, setWorkout] = useState({ strength: WORKOUT_BASE_STR, agility: WORKOUT_BASE_AGI });
   const [isLoaded, setIsLoaded] = useState(false);
+  const [equippedSkillIds, setEquippedSkillIds] = useState<string[]>([]);
 
   // --- STAT CALCULATIONS ---
   const equipped = useMemo(() => Object.values(slots).filter(Boolean) as Item[], [slots]);
@@ -28,12 +30,13 @@ export default function EquipmentPage() {
   const bonusAtkItems = useMemo(() => equipped.reduce((sum, it) => sum + (it.damage ?? 0), 0), [equipped]);
   const strBonus = Math.max(0, workout.strength - WORKOUT_BASE_STR) * ATK_PER_STR_POINT;
   const agiBonus = Math.max(0, workout.agility - WORKOUT_BASE_AGI) * MANA_PER_AGI_POINT;
+  
   const currentArmor = 20 + (level - 1) * 3 + bonusArmor;
   const currentAtk = 5 + (level - 1) * 2 + bonusAtkItems + strBonus;
   const MAX_MANA = 60 + (level - 1) * 8 + agiBonus;
   const MAX_HEALTH = 100 + (level - 1) * 10;
 
-  // --- TESTING FUNCTIONS ---
+  // --- XP / LEVEL LOGIC ---
   const addTestXp = (amount: number) => {
     let newXp = xp + amount;
     let newLevel = level;
@@ -44,12 +47,11 @@ export default function EquipmentPage() {
       newLevel += 1;
       alert(`LEVEL UP! You are now Level ${newLevel}`);
     }
-    
     setXp(newXp);
     setLevel(newLevel);
   };
 
-  // --- 1. INITIAL LOAD ---
+  // --- INITIAL LOAD ---
   useEffect(() => {
     const saved = localStorage.getItem("character_equipment");
     if (saved) {
@@ -60,10 +62,16 @@ export default function EquipmentPage() {
       setInventory(parsed.inventory || []);
       setSlots(parsed.slots || initialSlots);
     }
+
+    const savedSkills = localStorage.getItem("selected_skills");
+    if (savedSkills) {
+      setEquippedSkillIds(JSON.parse(savedSkills));
+    }
+    
     setIsLoaded(true);
   }, []);
 
-  // --- 2. AUTO-SAVE ---
+  // --- AUTO-SAVE ---
   useEffect(() => {
     if (!isLoaded) return; 
     const data = JSON.stringify({ inventory, slots, gender, level, xp });
@@ -84,12 +92,13 @@ export default function EquipmentPage() {
     return () => window.removeEventListener("storage", read);
   }, []);
 
-  // --- DRAG AND DROP / DELETE ---
+  // --- DRAG AND DROP ---
   const onDrop = (slot: Slot, itemId: string) => {
     const item = inventory.find(i => i.id === itemId);
     if (!item || !isLoaded) return;
     if (slot === "head" && item.type !== "helmet") return;
     if ((slot === "leftHand" || slot === "rightHand") && item.type === "helmet") return;
+    
     setInventory(prev => prev.filter(i => i.id !== itemId));
     setSlots(prev => {
       const replaced = prev[slot];
@@ -121,15 +130,23 @@ export default function EquipmentPage() {
             <button style={S.btn} onClick={() => window.location.href = "/home"}>⬅ Back</button>
             <div style={S.topBarMid}>
               <button style={S.btn} onClick={() => setGender(g => g === "guy" ? "girl" : "guy")}>🔁 Switch</button>
-              {/* --- NEW TEST BUTTON --- */}
+              
+              {/* SKILLS NAVIGATION BUTTON */}
+              <button 
+                style={{...S.btn, background: "#c084fc", color: "#2e1065"}} 
+                onClick={() => window.location.href = "/equipment/skills"}
+              >
+                🔮 Skills
+              </button>
+
               <button style={{...S.btn, background: "#fbbf24"}} onClick={() => addTestXp(25)}>✨ +25 XP</button>
-              <button style={S.btn} onClick={() => alert("Progress Sync Complete")}>💾 Sync</button>
               <button style={S.btn} onClick={() => window.location.href = "/workout"}>🏋️ Workout</button>
             </div>
             <button style={{ ...S.btn, background: "#ff7b7b" }} onClick={() => { if(confirm("Reset All Progress?")) { localStorage.clear(); window.location.reload(); }}}>♻ Reset</button>
           </div>
 
           <div style={S.layout}>
+            {/* INVENTORY SECTION */}
             <div style={S.inventory}>
               <h3 style={S.inventoryTitle}>Inventory</h3>
               <div style={S.items}>
@@ -149,6 +166,7 @@ export default function EquipmentPage() {
               </div>
             </div>
 
+            {/* CHARACTER VIEW & STATS */}
             <div style={S.characterWrap}>
               <div style={S.characterRow}>
                 <div style={S.characterFrame}>
@@ -165,6 +183,16 @@ export default function EquipmentPage() {
                   <StatBar label="ARMOR" value={currentArmor} max={100} color="#a8a8a8" />
                   <StatBar label="MANA" value={MAX_MANA} max={MAX_MANA} color="#3b82f6" />
                   <div style={S.atkLine}>ATK: {currentAtk}</div>
+
+                  {/* EQUIPPED SKILLS PREVIEW */}
+                  <div style={S.skillsPreview}>
+                    <div style={S.skillsPreviewTitle}>ACTIVE SKILLS</div>
+                    <div style={S.skillsGrid}>
+                      {equippedSkillIds.length > 0 ? equippedSkillIds.map(id => (
+                        <div key={id} style={S.skillTag}>{id.replace("_", " ").toUpperCase()}</div>
+                      )) : <div style={{fontSize: 9, opacity: 0.5}}>No skills selected</div>}
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -175,7 +203,7 @@ export default function EquipmentPage() {
   );
 }
 
-// ... [Keep existing SlotBox, StatBar, and S object] ...
+/* ---------------- HELPER COMPONENTS ---------------- */
 function SlotBox({ slot, label, slots, onDrop, onUnequip, top, left }: any) {
   const item = slots[slot];
   return (
@@ -200,6 +228,7 @@ function StatBar({ label, value, max, color }: any) {
   );
 }
 
+/* ---------------- STYLES ---------------- */
 const S: Record<string, React.CSSProperties> = {
   page: { minHeight: "100vh", background: "#0f172a", display: "flex", justifyContent: "center", alignItems: "center" },
   bg: { minHeight: "100vh", width: "100vw", backgroundImage: "url('/home-hub.png')", backgroundSize: "100% 100%", display: "flex", alignItems: "center", justifyContent: "center", padding: 24 },
@@ -220,11 +249,15 @@ const S: Record<string, React.CSSProperties> = {
   characterFrame: { position: "relative", width: 320, height: 420, border: "4px solid #4b2e1e", background: "#111", display: "flex", justifyContent: "center", alignItems: "center" },
   characterImg: { maxHeight: "100%", imageRendering: "pixelated" },
   slot: { position: "absolute", width: 62, height: 62, border: "3px dashed #00ffd5", background: "rgba(0,0,0,0.6)", color: "#00ffd5", fontSize: 10, display: "flex", alignItems: "center", justifyContent: "center", textAlign: "center" },
-  statsPanel: { width: 240, padding: 12, border: "3px solid #4b2e1e", background: "rgba(0,0,0,0.55)", color: "white", display: "flex", flexDirection: "column", gap: 12 },
+  statsPanel: { width: 240, padding: 12, border: "3px solid #4b2e1e", background: "rgba(0,0,0,0.75)", color: "white", display: "flex", flexDirection: "column", gap: 12 },
   levelLine: { fontSize: 14, fontWeight: 700 },
   statRow: { display: "flex", flexDirection: "column", gap: 4 },
   statLabel: { fontSize: 12 },
   statBarBg: { height: 14, background: "#111", border: "2px solid #333", overflow: "hidden" },
   statBarFill: { height: "100%", transition: "width 0.25s ease" },
   atkLine: { marginTop: 6, fontSize: 13, fontWeight: 700 },
+  skillsPreview: { marginTop: 8, borderTop: "1px solid #555", paddingTop: 10 },
+  skillsPreviewTitle: { fontSize: 10, color: "#a8a8a8", marginBottom: 6, fontWeight: 800 },
+  skillsGrid: { display: "flex", flexWrap: "wrap", gap: 4 },
+  skillTag: { fontSize: 9, background: "#4b2e1e", padding: "2px 6px", border: "1px solid #c084fc", color: "#c084fc", fontWeight: 700 },
 };
