@@ -10,7 +10,7 @@ type Item = {
   name: string;
   icon: string;
   type: ItemType;
-  armor?: number;  // adds to ARMOR
+  armor?: number; // adds to ARMOR
   damage?: number; // adds to ATK
 };
 
@@ -42,7 +42,10 @@ export default function EquipmentPage() {
   const [xp, setXp] = useState(0);
 
   /* ---------------- DERIVED STATS ---------------- */
-  const equipped = useMemo(() => Object.values(slots).filter(Boolean) as Item[], [slots]);
+  const equipped = useMemo(
+    () => Object.values(slots).filter(Boolean) as Item[],
+    [slots]
+  );
 
   const bonusArmor = useMemo(
     () => equipped.reduce((sum, it) => sum + (it.armor ?? 0), 0),
@@ -125,7 +128,8 @@ export default function EquipmentPage() {
     // - HEAD only helmet
     // - BOTH hands can hold armor OR weapon
     if (slot === "head" && item.type !== "helmet") return;
-    if ((slot === "leftHand" || slot === "rightHand") && item.type === "helmet") return;
+    if ((slot === "leftHand" || slot === "rightHand") && item.type === "helmet")
+      return;
 
     // Remove dragged item from inventory
     setInventory((prev) => prev.filter((i) => i.id !== itemId));
@@ -148,7 +152,10 @@ export default function EquipmentPage() {
 
           {/* TOP BUTTON BAR */}
           <div style={S.topBar}>
-            <button style={S.btn} onClick={() => (window.location.href = "/home")}>
+            <button
+              style={S.btn}
+              onClick={() => (window.location.href = "/home")}
+            >
               ⬅ Back
             </button>
 
@@ -164,13 +171,24 @@ export default function EquipmentPage() {
                 💾 Save
               </button>
 
+              {/* ✅ ADDED: Skills button */}
+              <button
+                style={S.btn}
+                onClick={() => (window.location.href = "/equipment/skills")}
+              >
+                🎯 Skills
+              </button>
+
               {/* Optional test button; remove anytime */}
               <button style={S.btn} onClick={() => gainXp(50)}>
                 +50 XP
               </button>
             </div>
 
-            <button style={{ ...S.btn, background: "#ff7b7b" }} onClick={resetCharacter}>
+            <button
+              style={{ ...S.btn, background: "#ff7b7b" }}
+              onClick={resetCharacter}
+            >
               ♻ Reset
             </button>
           </div>
@@ -214,9 +232,30 @@ export default function EquipmentPage() {
                     style={S.characterImg}
                   />
 
-                  <SlotBox slot="head" label="HEAD" top="10%" left="43%" slots={slots} onDrop={onDrop} />
-                  <SlotBox slot="leftHand" label="L-HAND" top="55%" left="20%" slots={slots} onDrop={onDrop} />
-                  <SlotBox slot="rightHand" label="R-HAND" top="55%" left="72%" slots={slots} onDrop={onDrop} />
+                  <SlotBox
+                    slot="head"
+                    label="HEAD"
+                    top="10%"
+                    left="43%"
+                    slots={slots}
+                    onDrop={onDrop}
+                  />
+                  <SlotBox
+                    slot="leftHand"
+                    label="L-HAND"
+                    top="55%"
+                    left="20%"
+                    slots={slots}
+                    onDrop={onDrop}
+                  />
+                  <SlotBox
+                    slot="rightHand"
+                    label="R-HAND"
+                    top="55%"
+                    left="72%"
+                    slots={slots}
+                    onDrop={onDrop}
+                  />
                 </div>
 
                 {/* STATS PANEL */}
@@ -224,14 +263,20 @@ export default function EquipmentPage() {
                   <div style={S.levelLine}>LV {level}</div>
 
                   <div style={S.xpWrap}>
-                    <div style={S.statLabel}>XP: {xp}/{xpNeed}</div>
+                    <div style={S.statLabel}>
+                      XP: {xp}/{xpNeed}
+                    </div>
                     <div style={S.statBarBg}>
                       <div style={{ ...S.statBarFill, width: `${xpPct}%` }} />
                     </div>
                   </div>
 
                   <StatBar label="HP" value={healthNow} max={MAX_HEALTH} />
-                  <StatBar label="ARMOR" value={currentArmor} max={BASE_ARMOR + 50} />
+                  <StatBar
+                    label="ARMOR"
+                    value={currentArmor}
+                    max={BASE_ARMOR + 50}
+                  />
                   <StatBar label="MANA" value={manaNow} max={MAX_MANA} />
 
                   <div style={S.atkLine}>ATK: {currentAtk}</div>
@@ -240,7 +285,14 @@ export default function EquipmentPage() {
             </div>
           </div>
 
-          <div style={{ marginTop: 10, fontSize: 12, color: "#4b2e1e", textAlign: "center" }}>
+          <div
+            style={{
+              marginTop: 10,
+              fontSize: 12,
+              color: "#4b2e1e",
+              textAlign: "center",
+            }}
+          >
             Rules: HEAD = helmet. Both hands can hold armor or weapon.
           </div>
         </div>
