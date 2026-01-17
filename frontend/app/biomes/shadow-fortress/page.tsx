@@ -3,23 +3,31 @@ import { useEffect, useState } from "react";
 
 /* ---------------- TYPES & CONSTANTS ---------------- */
 type Tile = "P" | "T" | "M" | "B" | ".";
-type MapEnemy = { id: string; name: string; x: number; y: number; alive: boolean };
+type MapEnemy = { id: string; name: string; x: number; y: number; alive: boolean; isBoss?: boolean };
 
 const TILE_SIZE = 64;
+const MAP_DIM = 8; // 8x8 Grid
 const STORAGE_KEY = "shadow_state";
 const VISION_RADIUS = 2;
 
 const SHADOW_MAP: Tile[][] = [
-  ["P", ".", ".", ".", "."],
-  [".", "T", "T", "T", "."],
-  [".", "T", "M", ".", "."],
-  [".", "T", ".", "T", "."],
-  [".", ".", ".", "M", "B"],
+  ["P", ".", ".", ".", ".", "T", ".", "."],
+  [".", "T", "T", "T", ".", "T", ".", "."],
+  [".", "T", "M", ".", ".", ".", ".", "."],
+  [".", "T", ".", "T", "T", "T", "T", "."],
+  [".", ".", ".", ".", "M", ".", ".", "."],
+  [".", "T", "T", "T", "T", "T", "T", "."],
+  [".", "M", ".", ".", ".", ".", "M", "."],
+  [".", ".", ".", "T", ".", ".", ".", "B"],
 ];
 
 const DEFAULT_ENEMIES: MapEnemy[] = [
   { id: "sh1", name: "Shadow Wraith", x: 2, y: 2, alive: true },
-  { id: "sh2", name: "Dark Knight", x: 3, y: 4, alive: true },
+  { id: "sh2", name: "Dark Knight", x: 4, y: 4, alive: true },
+  { id: "sh3", name: "Night Terror", x: 1, y: 6, alive: true },
+  { id: "sh4", name: "Abyssal Eye", x: 6, y: 6, alive: true },
+  // Stationary Boss at the end
+  { id: "boss_shadow", name: "Void Stalker", x: 7, y: 7, alive: true, isBoss: true },
 ];
 
 export default function ShadowDungeonPage() {
@@ -49,6 +57,9 @@ export default function ShadowDungeonPage() {
     if (result === "win" && defeatedId) {
       currentEnemies = currentEnemies.map(e => e.id === defeatedId ? { ...e, alive: false } : e);
       if (posRaw) currentPlayer = JSON.parse(posRaw);
+      
+      // If boss died, trigger completion
+      if (defeatedId === "boss_shadow") setHasFinished(true);
     }
 
     const finalRevealed = computeReveal(currentPlayer.x, currentPlayer.y, currentRevealed);
@@ -73,18 +84,16 @@ export default function ShadowDungeonPage() {
   /* ---------------- PURSUIT LOGIC (AI Movement) ---------------- */
   function moveEnemies(px: number, py: number, currentEnemies: MapEnemy[]) {
     return currentEnemies.map(enemy => {
-      if (!enemy.alive) return enemy;
+      if (!enemy.alive || enemy.isBoss) return enemy; // Boss doesn't move
 
       let nx = enemy.x;
       let ny = enemy.y;
 
-      // Simple AI: Move 1 step closer on either X or Y axis
       if (nx < px) nx++;
       else if (nx > px) nx--;
       else if (ny < py) ny++;
       else if (ny > py) ny--;
 
-      // Don't move into walls
       if (SHADOW_MAP[ny][nx] === "T") return enemy;
 
       return { ...enemy, x: nx, y: ny };
@@ -100,16 +109,10 @@ export default function ShadowDungeonPage() {
 
     if (ny < 0 || ny >= SHADOW_MAP.length || nx < 0 || nx >= SHADOW_MAP[0].length || SHADOW_MAP[ny][nx] === "T") return;
 
-    // 1. Move Player
     const newPos = { x: nx, y: ny };
-    
-    // 2. Check for encounter AFTER player moves
     let encounteredEnemy = enemies.find(e => e.x === nx && e.y === ny && e.alive);
-    
-    // 3. Move Enemies (Stalking mechanic)
     let updatedEnemies = moveEnemies(nx, ny, enemies);
     
-    // 4. Check for encounter AFTER enemies move (they might step on you!)
     if (!encounteredEnemy) {
         encounteredEnemy = updatedEnemies.find(e => e.x === nx && e.y === ny && e.alive);
     }
@@ -117,9 +120,10 @@ export default function ShadowDungeonPage() {
     if (encounteredEnemy) {
       localStorage.setItem("currentEnemyId", encounteredEnemy.id);
       localStorage.setItem("lastEnemyPosition", JSON.stringify({ x: nx, y: ny }));
-      // Use the updatedEnemies list for the save so positions stay consistent
+      
+      const fightUrl = encounteredEnemy.isBoss ? "/game/fight?biome=shadow&boss=true" : "/game/fight?biome=shadow";
       saveData(newPos, updatedEnemies, revealed);
-      window.location.href = "/game/fight?biome=shadow";
+      window.location.href = fightUrl;
       return;
     }
 
@@ -129,7 +133,10 @@ export default function ShadowDungeonPage() {
     setRevealed(newRevealed);
     saveData(newPos, updatedEnemies, newRevealed);
 
-    if (SHADOW_MAP[ny][nx] === "B") setHasFinished(true);
+    // End check: Tile is B and Boss is dead
+    if (SHADOW_MAP[ny][nx] === "B" && !enemies.find(e => e.id === "boss_shadow")?.alive) {
+        setHasFinished(true);
+    }
   }
 
   return (
@@ -137,7 +144,8 @@ export default function ShadowDungeonPage() {
       <div style={{ position: "relative" }}>
         <h1 style={S.title}>🌑 Shadow Dungeon</h1>
         
-        <div style={S.grid}>
+        {/* Adjusted repeat to MAP_DIM (8) */}
+        <div style={{...S.grid, gridTemplateColumns: `repeat(${MAP_DIM}, ${TILE_SIZE}px)`}}>
           {SHADOW_MAP.map((row, y) => row.map((cell, x) => {
             const isPlayer = player.x === x && player.y === y;
             const isRevealed = revealed[y][x];
@@ -149,9 +157,9 @@ export default function ShadowDungeonPage() {
                   <>
                     {isPlayer && "🕯️"}
                     {!isPlayer && cell === "T" && "🧱"}
-                    {!isPlayer && enemy?.alive && "👁️"}
+                    {!isPlayer && enemy?.alive && (enemy.isBoss ? "👿" : "👁️")}
                     {!isPlayer && enemy && !enemy.alive && "💀"}
-                    {!isPlayer && cell === "B" && "💎"}
+                    {!isPlayer && cell === "B" && !enemy?.alive && "💎"}
                   </>
                 ) : <div style={S.fog} />}
               </div>
@@ -169,8 +177,12 @@ export default function ShadowDungeonPage() {
         {hasFinished && (
           <div style={S.overlay}>
             <div style={S.card}>
-              <h2 style={{color: "#a855f7"}}>🔮 REALM ESCAPED</h2>
-              <button style={S.finBtn} onClick={() => window.location.href="/game"}>LEAVE SHADOWS</button>
+              <h2 style={{color: "#a855f7"}}>🔮 VOID STALKER DEFEATED</h2>
+              <h3>REALM ESCAPED</h3>
+              <button style={S.finBtn} onClick={() => {
+                  localStorage.removeItem(STORAGE_KEY);
+                  window.location.href="/game";
+              }}>LEAVE SHADOWS</button>
             </div>
           </div>
         )}
@@ -179,16 +191,16 @@ export default function ShadowDungeonPage() {
   );
 }
 
-/* ---------------- STYLES ---------------- */
+/* ---------------- STYLES (Unchanged except grid layout) ---------------- */
 const S: Record<string, React.CSSProperties> = {
-  bgShadow: { minHeight: "100vh", backgroundImage: "url('/biomes/shadow-fight.png')", display: "flex", justifyContent: "center", alignItems: "center", color: "#e9d5ff" },
+  bgShadow: { minHeight: "100vh", backgroundImage: "url('/biomes/shadow-fight.png')", backgroundSize: 'cover', display: "flex", justifyContent: "center", alignItems: "center", color: "#e9d5ff" },
   title: { textAlign: "center", textShadow: "0 0 10px #7e22ce", marginBottom: 20 },
-  grid: { display: "grid", gridTemplateColumns: `repeat(5, ${TILE_SIZE}px)`, gap: 4, background: "#000", padding: 10, border: "2px solid #6b21a8" },
+  grid: { display: "grid", gap: 4, background: "#000", padding: 10, border: "2px solid #6b21a8", boxShadow: "0 0 20px #4c1d95" },
   tile: { width: TILE_SIZE, height: TILE_SIZE, position: "relative", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, background: "#1e1b4b" },
   fog: { position: "absolute", inset: 0, background: "#000" },
   controls: { display: "grid", gridTemplateColumns: "repeat(3, 60px)", gap: 10, justifyContent: "center", marginTop: 20 },
-  btn: { width: 60, height: 60, background: "#4c1d95", color: "white", border: "1px solid #7e22ce", borderRadius: 8, cursor: "pointer" },
-  overlay: { position: "absolute", inset: 0, background: "rgba(0,0,0,0.95)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 10 },
+  btn: { width: 60, height: 60, background: "#4c1d95", color: "white", border: "1px solid #7e22ce", borderRadius: 8, cursor: "pointer", fontSize: 20 },
+  overlay: { position: "fixed", inset: 0, background: "rgba(0,0,0,0.95)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 10 },
   card: { padding: 40, background: "#2e1065", border: "2px solid #a855f7", textAlign: "center", borderRadius: 16 },
-  finBtn: { marginTop: 20, padding: "10px 20px", background: "#a855f7", border: "none", fontWeight: "bold", cursor: "pointer", color: "white" }
+  finBtn: { marginTop: 20, padding: "10px 20px", background: "#a855f7", border: "none", fontWeight: "bold", cursor: "pointer", color: "white", borderRadius: 4 }
 };

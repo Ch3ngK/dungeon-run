@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 
 /* ---------------- TYPES ---------------- */
 
-type Tile = "P" | "T" | "M" | "B" | ".";
+type Tile = "P" | "T" | "M" | "B" | "." | "🏁";
 type MapEnemy = {
   id: string;
   name: string;
@@ -24,17 +24,22 @@ const TILE_SIZE = 64;
 const STORAGE_KEY = "forest_state";
 const VISION_RADIUS = 1;
 
+// Expanded 7x7 Map
 const FOREST_MAP: Tile[][] = [
-  ["P", ".", ".", "T", "M"],
-  [".", "T", ".", ".", "."],
-  [".", ".", "T", "M", "."],
-  ["T", ".", ".", ".", "."],
-  [".", ".", ".", "T", "B"],
+  ["P", ".", ".", "T", ".", ".", "."],
+  [".", "T", ".", ".", ".", "T", "."],
+  [".", ".", "T", ".", ".", ".", "."],
+  ["T", ".", ".", ".", ".", "T", "."],
+  [".", ".", ".", "T", ".", ".", "."],
+  [".", ".", ".", ".", "T", ".", "."],
+  [".", ".", ".", ".", ".", "B", "🏁"], 
 ];
 
 const DEFAULT_ENEMIES: MapEnemy[] = [
   { id: "e1", name: "Wolf", x: 4, y: 0, alive: true },
   { id: "e2", name: "Treant", x: 3, y: 2, alive: true },
+  { id: "e3", name: "Slime", x: 1, y: 4, alive: true },
+  { id: "boss", name: "Forest Boss", x: 5, y: 6, alive: true }, // BOSS ADDED
 ];
 
 /* ---------------- PAGE COMPONENT ---------------- */
@@ -56,7 +61,6 @@ export default function ForestPage() {
     let currentPlayer = { x: 0, y: 0 };
     let currentRevealed = FOREST_MAP.map(row => row.map(() => false));
 
-    // 1. Load basic save data
     if (raw) {
       const save: ForestSave = JSON.parse(raw);
       currentPlayer = save.player;
@@ -64,31 +68,26 @@ export default function ForestPage() {
       currentRevealed = save.revealed;
     }
 
-    // 2. Check for recent battle victory
     const result = localStorage.getItem("lastBattleResult");
     const defeatedId = localStorage.getItem("lastDefeatedEnemyId");
     const posRaw = localStorage.getItem("lastEnemyPosition");
     const enemyPos = posRaw ? JSON.parse(posRaw) : null;
 
     if (result === "win" && defeatedId) {
-      // Mark enemy as dead
       currentEnemies = currentEnemies.map(e =>
         e.id === defeatedId ? { ...e, alive: false } : e
       );
 
-      // Move player onto the defeated enemy's tile
       if (enemyPos) {
         currentPlayer = { x: enemyPos.x, y: enemyPos.y };
         currentRevealed = computeReveal(currentPlayer.x, currentPlayer.y, currentRevealed);
       }
     }
 
-    // 3. Apply all states
     setPlayer(currentPlayer);
     setEnemies(currentEnemies);
     setRevealed(currentRevealed);
     
-    // Initial reveal if new game
     if (!raw && !result) {
         const initialReveal = computeReveal(0, 0, currentRevealed);
         setRevealed(initialReveal);
@@ -97,7 +96,6 @@ export default function ForestPage() {
         saveGame(currentPlayer, currentRevealed, currentEnemies);
     }
 
-    // 4. Cleanup battle flags
     localStorage.removeItem("lastBattleResult");
     localStorage.removeItem("lastDefeatedEnemyId");
     localStorage.removeItem("lastEnemyPosition");
@@ -129,11 +127,9 @@ export default function ForestPage() {
     const nx = player.x + dx;
     const ny = player.y + dy;
 
-    // Boundary and Wall Check
     if (ny < 0 || ny >= map.length || nx < 0 || nx >= map[0].length) return;
     if (map[ny][nx] === "T") return;
 
-    // Enemy Encounter Check
     const enemyHere = enemies.find(e => e.x === nx && e.y === ny && e.alive);
     if (enemyHere) {
       localStorage.setItem("currentEnemyId", enemyHere.id);
@@ -142,7 +138,6 @@ export default function ForestPage() {
       return; 
     }
 
-    // Update Player & Fog
     const newPos = { x: nx, y: ny };
     setPlayer(newPos);
     
@@ -150,8 +145,8 @@ export default function ForestPage() {
     setRevealed(nextRevealed);
     saveGame(newPos, nextRevealed, enemies);
 
-    // Victory Check (Tile "B")
-    if (map[ny][nx] === "B") {
+    // Victory Check (Tile "🏁")
+    if (map[ny][nx] === "🏁") {
       setHasFinished(true);
     }
   }
@@ -160,10 +155,16 @@ export default function ForestPage() {
 
   return (
     <div style={S.bgforest}>
+      <style>{`
+        @keyframes bossPulse {
+          0% { filter: drop-shadow(0 0 2px red); transform: scale(1); }
+          50% { filter: drop-shadow(0 0 10px red); transform: scale(1.1); }
+          100% { filter: drop-shadow(0 0 2px red); transform: scale(1); }
+        }
+      `}</style>
       <div style={{ padding: 20, position: "relative" }}>
         <h1 style={S.title}>🌲 Forest Ruins</h1>
 
-        {/* --- THE GRID --- */}
         <div
           style={{
             display: "grid",
@@ -183,30 +184,27 @@ export default function ForestPage() {
               const enemyHere = enemies.find(e => e.x === x && e.y === y);
 
               return (
-                <div
-                  key={`${x}-${y}`}
-                  style={S.tile}
-                >
+                <div key={`${x}-${y}`} style={S.tile}>
                   {(isRevealed || isTree) && (
                     <>
                       {isPlayer && "🧍"}
                       {!isPlayer && isTree && "🌲"}
-                      {!isPlayer && enemyHere?.alive && "👾"}
+                      {!isPlayer && enemyHere?.alive && (
+                         <span style={enemyHere.id === "boss" ? { animation: "bossPulse 2s infinite" } : {}}>
+                            {enemyHere.id === "boss" ? "👹" : "👾"}
+                         </span>
+                      )}
                       {!isPlayer && enemyHere && !enemyHere.alive && "💀"}
-                      {!isPlayer && cell === "B" && "🏁"}
+                      {!isPlayer && !enemyHere?.alive && cell === "🏁" && "🏁"}
                     </>
                   )}
-
-                  {!isRevealed && !isTree && (
-                    <div style={S.fog} />
-                  )}
+                  {!isRevealed && !isTree && <div style={S.fog} />}
                 </div>
               );
             })
           )}
         </div>
 
-        {/* --- MOVEMENT CONTROLS --- */}
         <div style={S.controls}>
           <div />
           <button style={S.moveBtn} onClick={() => move(0, -1)}>⬆️</button>
@@ -216,18 +214,12 @@ export default function ForestPage() {
           <button style={S.moveBtn} onClick={() => move(1, 0)}>➡️</button>
         </div>
 
-        {/* --- FINISH OVERLAY --- */}
         {hasFinished && (
           <div style={S.finishOverlay}>
             <div style={S.finishCard}>
               <h2 style={{ fontSize: 32, marginBottom: 10 }}>🏁 STAGE CLEAR!</h2>
               <p style={{ marginBottom: 20 }}>You have escaped the Forest Ruins.</p>
-              <button 
-                style={S.finishBtn} 
-                onClick={() => window.location.href = "/game"}
-              >
-                RETURN TO HUB
-              </button>
+              <button style={S.finishBtn} onClick={() => window.location.href = "/game"}>RETURN TO HUB</button>
             </div>
           </div>
         )}
@@ -236,8 +228,7 @@ export default function ForestPage() {
   );
 }
 
-/* ---------------- STYLES ---------------- */
-
+/* ---------------- STYLES (UNCHANGED) ---------------- */
 const S: Record<string, React.CSSProperties> = {
   bgforest: {
     minHeight: "100vh",
@@ -254,76 +245,12 @@ const S: Record<string, React.CSSProperties> = {
     color: "white",
     fontFamily: "sans-serif"
   },
-  title: {
-    textAlign: "center",
-    textShadow: "2px 2px #000",
-    marginBottom: "20px"
-  },
-  tile: {
-    width: TILE_SIZE,
-    height: TILE_SIZE,
-    position: "relative",
-    background: "#1f2933",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 28,
-    border: "1px solid rgba(255,255,255,0.1)",
-  },
-  fog: {
-    position: "absolute",
-    inset: 0,
-    background: "rgba(0,0,0,0.92)",
-    zIndex: 5
-  },
-  controls: {
-    display: "grid",
-    gridTemplateColumns: "repeat(3, 1fr)",
-    gap: 10,
-    width: 180,
-    margin: "0 auto",
-  },
-  moveBtn: {
-    width: 50,
-    height: 50,
-    fontSize: 24,
-    cursor: "pointer",
-    background: "rgba(255,255,255,0.2)",
-    border: "2px solid white",
-    borderRadius: "8px",
-    color: "white",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center"
-  },
-  finishOverlay: {
-    position: "absolute",
-    inset: 0,
-    background: "rgba(0,0,0,0.85)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    zIndex: 100,
-    borderRadius: "12px",
-    animation: "fadeIn 0.5s ease"
-  },
-  finishCard: {
-    background: "#1e293b",
-    padding: "40px",
-    border: "4px solid #22c55e",
-    textAlign: "center",
-    boxShadow: "0 0 30px rgba(34, 197, 94, 0.4)",
-    borderRadius: "16px"
-  },
-  finishBtn: {
-    padding: "12px 24px",
-    background: "#22c55e",
-    border: "none",
-    color: "#052e16",
-    fontWeight: "bold",
-    fontSize: "18px",
-    cursor: "pointer",
-    borderRadius: "8px",
-    transition: "transform 0.2s",
-  }
+  title: { textAlign: "center", textShadow: "2px 2px #000", marginBottom: "20px" },
+  tile: { width: TILE_SIZE, height: TILE_SIZE, position: "relative", background: "#1f2933", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28, border: "1px solid rgba(255,255,255,0.1)" },
+  fog: { position: "absolute", inset: 0, background: "rgba(0,0,0,0.92)", zIndex: 5 },
+  controls: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10, width: 180, margin: "0 auto" },
+  moveBtn: { width: 50, height: 50, fontSize: 24, cursor: "pointer", background: "rgba(255,255,255,0.2)", border: "2px solid white", borderRadius: "8px", color: "white", display: "flex", alignItems: "center", justifyContent: "center" },
+  finishOverlay: { position: "absolute", inset: 0, background: "rgba(0,0,0,0.85)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, borderRadius: "12px" },
+  finishCard: { background: "#1e293b", padding: "40px", border: "4px solid #22c55e", textAlign: "center", boxShadow: "0 0 30px rgba(34, 197, 94, 0.4)", borderRadius: "16px" },
+  finishBtn: { padding: "12px 24px", background: "#22c55e", border: "none", color: "#052e16", fontWeight: "bold", fontSize: "18px", cursor: "pointer", borderRadius: "8px" }
 };
