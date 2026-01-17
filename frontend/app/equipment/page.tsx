@@ -14,6 +14,20 @@ type Item = {
   damage?: number; // adds to ATK
 };
 
+/* ---------------- WORKOUT LINK (dr_stats) ----------------
+   Workout page saves: localStorage.setItem("dr_stats", JSON.stringify({ strength, agility }))
+   Rule: STR -> ATK, AGI -> MANA
+   You can tune these numbers anytime.
+*/
+const WORKOUT_BASE_STR = 10;
+const WORKOUT_BASE_AGI = 0;
+
+// 1 STR point above base gives +1 ATK
+const ATK_PER_STR_POINT = 1;
+
+// 1 AGI point gives +5 MAX MANA (feel free to change)
+const MANA_PER_AGI_POINT = 5;
+
 const DEFAULT_ITEMS: Item[] = [
   { id: "iron helmet", name: "Helmet", icon: "🪖", type: "helmet", armor: 5 },
   { id: "iron armor", name: "Armor", icon: "🛡️", type: "armor", armor: 10 },
@@ -41,6 +55,12 @@ export default function EquipmentPage() {
   const [level, setLevel] = useState(1);
   const [xp, setXp] = useState(0);
 
+  // Workout stats (linked)
+  const [workout, setWorkout] = useState<{ strength: number; agility: number }>({
+    strength: WORKOUT_BASE_STR,
+    agility: WORKOUT_BASE_AGI,
+  });
+
   /* ---------------- DERIVED STATS ---------------- */
   const equipped = useMemo(
     () => Object.values(slots).filter(Boolean) as Item[],
@@ -52,7 +72,7 @@ export default function EquipmentPage() {
     [equipped]
   );
 
-  const bonusAtk = useMemo(
+  const bonusAtkFromItems = useMemo(
     () => equipped.reduce((sum, it) => sum + (it.damage ?? 0), 0),
     [equipped]
   );
@@ -60,11 +80,20 @@ export default function EquipmentPage() {
   // Base stats by level (easy to change later)
   const MAX_HEALTH = 100 + (level - 1) * 10;
   const BASE_ARMOR = 20 + (level - 1) * 3;
-  const MAX_MANA = 60 + (level - 1) * 8;
+  const BASE_MAX_MANA = 60 + (level - 1) * 8;
   const BASE_ATK = 5 + (level - 1) * 2;
 
+  // Workout bonuses
+  const strAboveBase = Math.max(0, workout.strength - WORKOUT_BASE_STR);
+  const agiAboveBase = Math.max(0, workout.agility - WORKOUT_BASE_AGI);
+
+  const workoutAtkBonus = strAboveBase * ATK_PER_STR_POINT;
+  const workoutManaBonus = agiAboveBase * MANA_PER_AGI_POINT;
+
   const currentArmor = BASE_ARMOR + bonusArmor;
-  const currentAtk = BASE_ATK + bonusAtk;
+  const currentAtk = BASE_ATK + bonusAtkFromItems + workoutAtkBonus;
+
+  const MAX_MANA = BASE_MAX_MANA + workoutManaBonus;
 
   // (Equipment page) show full bars
   const healthNow = MAX_HEALTH;
@@ -86,7 +115,7 @@ export default function EquipmentPage() {
     setLevel(newLevel);
   }
 
-  /* ---------------- LOAD SAVE ---------------- */
+  /* ---------------- LOAD SAVE (equipment) ---------------- */
   useEffect(() => {
     const saved = localStorage.getItem("character_equipment");
     if (!saved) return;
@@ -97,6 +126,38 @@ export default function EquipmentPage() {
     setGender(parsed.gender ?? "guy");
     setLevel(parsed.level ?? 1);
     setXp(parsed.xp ?? 0);
+  }, []);
+
+  /* ---------------- LOAD WORKOUT (dr_stats) ---------------- */
+  useEffect(() => {
+    function readWorkout() {
+      try {
+        const raw = localStorage.getItem("dr_stats");
+        if (!raw) {
+          setWorkout({ strength: WORKOUT_BASE_STR, agility: WORKOUT_BASE_AGI });
+          return;
+        }
+        const parsed = JSON.parse(raw);
+        setWorkout({
+          strength:
+            typeof parsed.strength === "number" ? parsed.strength : WORKOUT_BASE_STR,
+          agility:
+            typeof parsed.agility === "number" ? parsed.agility : WORKOUT_BASE_AGI,
+        });
+      } catch {
+        setWorkout({ strength: WORKOUT_BASE_STR, agility: WORKOUT_BASE_AGI });
+      }
+    }
+
+    readWorkout();
+
+    // updates when another page writes to localStorage
+    function onStorage(e: StorageEvent) {
+      if (e.key === "dr_stats") readWorkout();
+    }
+
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   /* ---------------- SAVE ---------------- */
@@ -152,10 +213,7 @@ export default function EquipmentPage() {
 
           {/* TOP BUTTON BAR */}
           <div style={S.topBar}>
-            <button
-              style={S.btn}
-              onClick={() => (window.location.href = "/home")}
-            >
+            <button style={S.btn} onClick={() => (window.location.href = "/home")}>
               ⬅ Back
             </button>
 
@@ -171,12 +229,15 @@ export default function EquipmentPage() {
                 💾 Save
               </button>
 
-              {/* ✅ ADDED: Skills button */}
               <button
                 style={S.btn}
                 onClick={() => (window.location.href = "/equipment/skills")}
               >
                 🎯 Skills
+              </button>
+
+              <button style={S.btn} onClick={() => (window.location.href = "/workout")}>
+                🏋️ Workout
               </button>
 
               {/* Optional test button; remove anytime */}
@@ -185,10 +246,7 @@ export default function EquipmentPage() {
               </button>
             </div>
 
-            <button
-              style={{ ...S.btn, background: "#ff7b7b" }}
-              onClick={resetCharacter}
-            >
+            <button style={{ ...S.btn, background: "#ff7b7b" }} onClick={resetCharacter}>
               ♻ Reset
             </button>
           </div>
@@ -232,30 +290,9 @@ export default function EquipmentPage() {
                     style={S.characterImg}
                   />
 
-                  <SlotBox
-                    slot="head"
-                    label="HEAD"
-                    top="10%"
-                    left="43%"
-                    slots={slots}
-                    onDrop={onDrop}
-                  />
-                  <SlotBox
-                    slot="leftHand"
-                    label="L-HAND"
-                    top="55%"
-                    left="20%"
-                    slots={slots}
-                    onDrop={onDrop}
-                  />
-                  <SlotBox
-                    slot="rightHand"
-                    label="R-HAND"
-                    top="55%"
-                    left="72%"
-                    slots={slots}
-                    onDrop={onDrop}
-                  />
+                  <SlotBox slot="head" label="HEAD" top="10%" left="43%" slots={slots} onDrop={onDrop} />
+                  <SlotBox slot="leftHand" label="L-HAND" top="55%" left="20%" slots={slots} onDrop={onDrop} />
+                  <SlotBox slot="rightHand" label="R-HAND" top="55%" left="72%" slots={slots} onDrop={onDrop} />
                 </div>
 
                 {/* STATS PANEL */}
@@ -263,36 +300,28 @@ export default function EquipmentPage() {
                   <div style={S.levelLine}>LV {level}</div>
 
                   <div style={S.xpWrap}>
-                    <div style={S.statLabel}>
-                      XP: {xp}/{xpNeed}
-                    </div>
+                    <div style={S.statLabel}>XP: {xp}/{xpNeed}</div>
                     <div style={S.statBarBg}>
                       <div style={{ ...S.statBarFill, width: `${xpPct}%` }} />
                     </div>
                   </div>
 
                   <StatBar label="HP" value={healthNow} max={MAX_HEALTH} />
-                  <StatBar
-                    label="ARMOR"
-                    value={currentArmor}
-                    max={BASE_ARMOR + 50}
-                  />
+                  <StatBar label="ARMOR" value={currentArmor} max={BASE_ARMOR + 50} />
                   <StatBar label="MANA" value={manaNow} max={MAX_MANA} />
 
                   <div style={S.atkLine}>ATK: {currentAtk}</div>
+
+                  {/* workout link info */}
+                  <div style={{ fontSize: 11, opacity: 0.9, marginTop: 6 }}>
+                    Workout: STR {workout.strength} (+{workoutAtkBonus} ATK), AGI {workout.agility} (+{workoutManaBonus} MANA)
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div
-            style={{
-              marginTop: 10,
-              fontSize: 12,
-              color: "#4b2e1e",
-              textAlign: "center",
-            }}
-          >
+          <div style={{ marginTop: 10, fontSize: 12, color: "#4b2e1e", textAlign: "center" }}>
             Rules: HEAD = helmet. Both hands can hold armor or weapon.
           </div>
         </div>
@@ -339,15 +368,7 @@ function SlotBox({
   );
 }
 
-function StatBar({
-  label,
-  value,
-  max,
-}: {
-  label: string;
-  value: number;
-  max: number;
-}) {
+function StatBar({ label, value, max }: { label: string; value: number; max: number }) {
   const percent = Math.min(100, (value / max) * 100);
 
   return (
@@ -485,7 +506,7 @@ const S: Record<string, React.CSSProperties> = {
   },
 
   statsPanel: {
-    width: 200,
+    width: 240,
     padding: 12,
     border: "3px solid #4b2e1e",
     background: "rgba(0,0,0,0.55)",
