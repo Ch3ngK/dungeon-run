@@ -37,7 +37,7 @@ export default function Home() {
             color: "white",
             border: "none",
           }}
-          onClick={() => alert("Start Game!")}
+          onClick={() => window.location.href = "/home"}
         >
           START TRAINING
         </button>
