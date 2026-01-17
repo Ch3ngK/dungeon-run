@@ -5,6 +5,9 @@ import { useEffect, useMemo, useState } from "react";
 type Mode = "strength" | "agility";
 type StrengthLevel = 1 | 2 | 3 | 4 | 5;
 
+const BASE_STR = 10;
+const BASE_AGI = 0;
+
 const STRENGTH_LEVELS: { level: StrengthLevel; name: string; desc: string }[] = [
   { level: 1, name: "Incline Push-up", desc: "+5 STR" },
   { level: 2, name: "Knee Push-up", desc: "+5 STR" },
@@ -16,7 +19,7 @@ const STRENGTH_LEVELS: { level: StrengthLevel; name: string; desc: string }[] = 
 const AEROBIC_TYPES = ["Running", "Swimming", "Cycling", "Jump Rope"] as const;
 type AerobicType = (typeof AEROBIC_TYPES)[number];
 
-// simple points rule: 10 min = +1 AGI (adjust however you like)
+// 10 min = +1 AGI
 function agilityPointsFromMinutes(mins: number) {
   return Math.max(0, Math.floor(mins / 10));
 }
@@ -24,27 +27,28 @@ function agilityPointsFromMinutes(mins: number) {
 export default function WorkoutPage() {
   const [mode, setMode] = useState<Mode>("strength");
 
-  // ---- Strength (draft -> confirm) ----
+  // Strength (draft -> confirm)
   const [strengthDraft, setStrengthDraft] = useState<StrengthLevel | null>(null);
   const [strengthConfirmed, setStrengthConfirmed] = useState<StrengthLevel | null>(null);
 
-  // ---- Agility (draft -> confirm) ----
+  // Agility (draft -> confirm)
   const [aerobicDraft, setAerobicDraft] = useState<AerobicType>("Running");
   const [minutesDraft, setMinutesDraft] = useState<number>(20);
-
   const [aerobicConfirmed, setAerobicConfirmed] = useState<{ type: AerobicType; minutes: number } | null>(null);
 
-  // ---- Stats (persisted) ----
-  const [strength, setStrength] = useState<number>(0);
-  const [agility, setAgility] = useState<number>(0);
+  // Stats (persisted)
+  const [strength, setStrength] = useState<number>(BASE_STR);
+  const [agility, setAgility] = useState<number>(BASE_AGI);
 
-  // load stats once
+  // load stats once (with base fallback)
   useEffect(() => {
     const saved = localStorage.getItem("dr_stats");
     if (saved) {
       const parsed = JSON.parse(saved);
-      setStrength(parsed.strength ?? 0);
-      setAgility(parsed.agility ?? 0);
+      setStrength(typeof parsed.strength === "number" ? parsed.strength : BASE_STR);
+      setAgility(typeof parsed.agility === "number" ? parsed.agility : BASE_AGI);
+    } else {
+      localStorage.setItem("dr_stats", JSON.stringify({ strength: BASE_STR, agility: BASE_AGI }));
     }
   }, []);
 
@@ -66,7 +70,7 @@ export default function WorkoutPage() {
   function confirmStrength() {
     if (!strengthDraft) return;
     setStrengthConfirmed(strengthDraft);
-    setStrength((s) => s + 5); // +5 STR per completed strength workout
+    setStrength((s) => s + 5);
   }
 
   function cancelStrength() {
@@ -85,6 +89,19 @@ export default function WorkoutPage() {
     setMinutesDraft(aerobicConfirmed.minutes);
   }
 
+  function resetToBase() {
+    setStrength(BASE_STR);
+    setAgility(BASE_AGI);
+    localStorage.setItem("dr_stats", JSON.stringify({ strength: BASE_STR, agility: BASE_AGI }));
+
+    // (optional) clear selected plans too
+    setStrengthDraft(null);
+    setStrengthConfirmed(null);
+    setAerobicDraft("Running");
+    setMinutesDraft(20);
+    setAerobicConfirmed(null);
+  }
+
   return (
     <main style={S.page}>
       <div style={S.board}>
@@ -92,16 +109,20 @@ export default function WorkoutPage() {
           <h1 style={S.h1}>WORKOUT SELECT</h1>
         </div>
 
-        {/* STATS BAR */}
         <div style={S.statsRow}>
           <div style={S.statChip}>STR: {strength}</div>
           <div style={S.statChip}>AGI: {agility}</div>
-          <button style={S.backBtn} onClick={() => (window.location.href = "/home")}>
-            ⬅ HUB
-          </button>
+
+          <div style={{ display: "flex", gap: 10 }}>
+            <button style={S.resetBtn} onClick={resetToBase}>
+              RESET
+            </button>
+            <button style={S.backBtn} onClick={() => (window.location.href = "/home")}>
+              ⬅ HUB
+            </button>
+          </div>
         </div>
 
-        {/* MODE TABS */}
         <div style={S.tabs}>
           <button
             style={{ ...S.tab, ...(mode === "strength" ? S.tabActive : null) }}
@@ -117,99 +138,103 @@ export default function WorkoutPage() {
           </button>
         </div>
 
-        {/* CONTENT */}
-        {mode === "strength" ? (
-          <>
-            <p style={S.subtitle}>Pick a level (L5 Pull-up is hardest). Completing adds +5 STR.</p>
+        {/* Fixed-size content area so both tabs stay same height */}
+        <div style={S.content}>
+          {mode === "strength" ? (
+            <>
+              <p style={S.subtitle}>Pick a level (L5 Pull-up is hardest). Completing adds +5 STR.</p>
 
-            <div style={S.list}>
-              {STRENGTH_LEVELS.map((lvl) => {
-                const active = strengthDraft === lvl.level;
-                return (
-                  <button
-                    key={lvl.level}
-                    style={{ ...S.levelRow, ...(active ? S.levelRowActive : null) }}
-                    onClick={() => setStrengthDraft(lvl.level)}
+              <div style={S.list}>
+                {STRENGTH_LEVELS.map((lvl) => {
+                  const active = strengthDraft === lvl.level;
+                  return (
+                    <button
+                      key={lvl.level}
+                      style={{ ...S.levelRow, ...(active ? S.levelRowActive : null) }}
+                      onClick={() => setStrengthDraft(lvl.level)}
+                    >
+                      <span>LV {lvl.level}</span>
+                      <span style={{ textTransform: "capitalize" }}>{lvl.name}</span>
+                      <span style={S.badge}>{lvl.desc}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div style={S.actions}>
+                <button style={S.confirmBtn} disabled={!strengthDraft || !strengthHasChanges} onClick={confirmStrength}>
+                  CONFIRM
+                </button>
+                <button style={S.cancelBtn} disabled={!strengthHasChanges} onClick={cancelStrength}>
+                  CANCEL
+                </button>
+              </div>
+
+              <div style={S.divider} />
+              <h3 style={S.h3}>— Your Plan —</h3>
+              {strengthConfirmed ? (
+                <p style={S.planLine}>
+                  Strength: LV {strengthConfirmed} (
+                  {STRENGTH_LEVELS.find((x) => x.level === strengthConfirmed)?.name})
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <p style={S.subtitle}>
+                Choose aerobic type and duration. Agility gain = <b>+1 AGI per 10 minutes</b> (adjust anytime).
+              </p>
+
+              <div style={S.agilityGrid}>
+                <div>
+                  <div style={S.label}>Activity</div>
+                  <select
+                    style={S.select}
+                    value={aerobicDraft}
+                    onChange={(e) => setAerobicDraft(e.target.value as AerobicType)}
                   >
-                    <span>LV {lvl.level}</span>
-                    <span style={{ textTransform: "capitalize" }}>{lvl.name}</span>
-                    <span style={S.badge}>{lvl.desc}</span>
-                  </button>
-                );
-              })}
-            </div>
+                    {AEROBIC_TYPES.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-            <div style={S.actions}>
-              <button style={S.confirmBtn} disabled={!strengthDraft || !strengthHasChanges} onClick={confirmStrength}>
-                CONFIRM
-              </button>
-              <button style={S.cancelBtn} disabled={!strengthHasChanges} onClick={cancelStrength}>
-                CANCEL
-              </button>
-            </div>
+                <div>
+                  <div style={S.label}>Duration (minutes)</div>
+                  <input
+                    style={S.input}
+                    type="number"
+                    min={0}
+                    step={5}
+                    value={minutesDraft}
+                    onChange={(e) => setMinutesDraft(Number(e.target.value))}
+                  />
+                </div>
 
-            {/* YOUR PLAN: empty if nothing confirmed */}
-            <div style={S.divider} />
-            <h3 style={S.h3}>— Your Plan —</h3>
-            {strengthConfirmed ? (
-              <p style={S.planLine}>
-                Strength: LV {strengthConfirmed} ({STRENGTH_LEVELS.find((x) => x.level === strengthConfirmed)?.name})
-              </p>
-            ) : null}
-          </>
-        ) : (
-          <>
-            <p style={S.subtitle}>
-              Choose aerobic type and duration. Agility gain = <b>+1 AGI per 10 minutes</b> (adjust anytime).
-            </p>
-
-            <div style={S.agilityGrid}>
-              <div>
-                <div style={S.label}>Activity</div>
-                <select style={S.select} value={aerobicDraft} onChange={(e) => setAerobicDraft(e.target.value as AerobicType)}>
-                  {AEROBIC_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
+                <div style={S.preview}>Gain: +{agilityPointsFromMinutes(minutesDraft)} AGI</div>
               </div>
 
-              <div>
-                <div style={S.label}>Duration (minutes)</div>
-                <input
-                  style={S.input}
-                  type="number"
-                  min={0}
-                  step={5}
-                  value={minutesDraft}
-                  onChange={(e) => setMinutesDraft(Number(e.target.value))}
-                />
+              <div style={S.actions}>
+                <button style={S.confirmBtn} disabled={!agilityHasChanges} onClick={confirmAgility}>
+                  CONFIRM
+                </button>
+                <button style={S.cancelBtn} disabled={!agilityHasChanges || !aerobicConfirmed} onClick={cancelAgility}>
+                  CANCEL
+                </button>
               </div>
 
-              <div style={S.preview}>
-                Gain: +{agilityPointsFromMinutes(minutesDraft)} AGI
-              </div>
-            </div>
-
-            <div style={S.actions}>
-              <button style={S.confirmBtn} disabled={!agilityHasChanges} onClick={confirmAgility}>
-                CONFIRM
-              </button>
-              <button style={S.cancelBtn} disabled={!agilityHasChanges || !aerobicConfirmed} onClick={cancelAgility}>
-                CANCEL
-              </button>
-            </div>
-
-            <div style={S.divider} />
-            <h3 style={S.h3}>— Your Plan —</h3>
-            {aerobicConfirmed ? (
-              <p style={S.planLine}>
-                Agility: {aerobicConfirmed.type} ({aerobicConfirmed.minutes} min)
-              </p>
-            ) : null}
-          </>
-        )}
+              <div style={S.divider} />
+              <h3 style={S.h3}>— Your Plan —</h3>
+              {aerobicConfirmed ? (
+                <p style={S.planLine}>
+                  Agility: {aerobicConfirmed.type} ({aerobicConfirmed.minutes} min)
+                </p>
+              ) : null}
+            </>
+          )}
+        </div>
       </div>
     </main>
   );
@@ -219,7 +244,7 @@ const S: Record<string, React.CSSProperties> = {
   page: {
     minHeight: "100vh",
     width: "100vw",
-    backgroundImage: "url('/ui/workout-bg.png')", // keep your dungeon bg
+    backgroundImage: "url('/ui/workout-bg.png')",
     backgroundSize: "cover",
     backgroundPosition: "center",
     imageRendering: "pixelated",
@@ -272,6 +297,13 @@ const S: Record<string, React.CSSProperties> = {
     boxShadow: "3px 3px 0 rgba(0,0,0,0.45)",
     cursor: "pointer",
   },
+  resetBtn: {
+    border: "3px solid rgba(70,40,20,0.9)",
+    padding: "8px 10px",
+    background: "#ffd36f",
+    boxShadow: "3px 3px 0 rgba(0,0,0,0.45)",
+    cursor: "pointer",
+  },
   tabs: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 },
   tab: {
     padding: "10px 12px",
@@ -280,11 +312,27 @@ const S: Record<string, React.CSSProperties> = {
     boxShadow: "4px 4px 0 rgba(0,0,0,0.45)",
     cursor: "pointer",
   },
-  tabActive: {
-    background: "rgba(255,255,255,0.35)",
+  tabActive: { background: "rgba(255,255,255,0.35)" },
+
+  content: {
+    minHeight: 520,
+    display: "flex",
+    flexDirection: "column",
+    justifyContent: "flex-start",
   },
+
   subtitle: { margin: "6px 0 12px 0", textAlign: "center", fontSize: 12 },
-  list: { display: "grid", gap: 10, maxWidth: 720, margin: "0 auto" },
+
+  list: {
+    display: "grid",
+    gap: 10,
+    maxWidth: 720,
+    margin: "0 auto",
+    flex: 1,
+    overflowY: "auto",
+    paddingRight: 6,
+  },
+
   levelRow: {
     display: "grid",
     gridTemplateColumns: "90px 1fr 110px",
