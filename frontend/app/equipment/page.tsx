@@ -17,7 +17,6 @@ type Item = {
 /* ---------------- WORKOUT LINK (dr_stats) ----------------
    Workout page saves: localStorage.setItem("dr_stats", JSON.stringify({ strength, agility }))
    Rule: STR -> ATK, AGI -> MANA
-   You can tune these numbers anytime.
 */
 const WORKOUT_BASE_STR = 10;
 const WORKOUT_BASE_AGI = 0;
@@ -25,14 +24,85 @@ const WORKOUT_BASE_AGI = 0;
 // 1 STR point above base gives +1 ATK
 const ATK_PER_STR_POINT = 1;
 
-// 1 AGI point gives +5 MAX MANA (feel free to change)
+// 1 AGI point gives +5 MAX MANA
 const MANA_PER_AGI_POINT = 5;
 
-const DEFAULT_ITEMS: Item[] = [
-  { id: "iron helmet", name: "Helmet", icon: "🪖", type: "helmet", armor: 5 },
-  { id: "iron armor", name: "Armor", icon: "🛡️", type: "armor", armor: 10 },
-  { id: "iron sword", name: "Sword", icon: "⚔️", type: "weapon", damage: 15 },
-];
+/* ---------------- EQUIPMENT UNLOCKS ----------------
+   Start with NOTHING.
+   Unlock sets by bosses:
+   - Forest boss: Wooden set
+   - Ice boss: Ice set
+   - Lava boss: Lava set
+   - Shadow boss: Shadow set
+
+   Expected keys:
+   boss_defeated_forest / ice / lava / shadow  => "true"
+*/
+type BiomeKey = "forest" | "ice" | "lava" | "shadow";
+
+const BOSS_KEYS: Record<BiomeKey, string> = {
+  forest: "boss_defeated_forest",
+  ice: "boss_defeated_ice",
+  lava: "boss_defeated_lava",
+  shadow: "boss_defeated_shadow",
+};
+
+function readBoolLS(key: string) {
+  try {
+    return localStorage.getItem(key) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function getUnlockTier() {
+  // Tier 0: nothing
+  // Tier 1: forest
+  // Tier 2: ice
+  // Tier 3: lava
+  // Tier 4: shadow
+  const forest = readBoolLS(BOSS_KEYS.forest);
+  const ice = readBoolLS(BOSS_KEYS.ice);
+  const lava = readBoolLS(BOSS_KEYS.lava);
+  const shadow = readBoolLS(BOSS_KEYS.shadow);
+
+  if (shadow) return 4;
+  if (lava) return 3;
+  if (ice) return 2;
+  if (forest) return 1;
+  return 0;
+}
+
+// Items by tier (you can tweak stats anytime)
+const TIER_ITEMS: Record<number, Item[]> = {
+  0: [],
+  1: [
+    { id: "wood_helm", name: "Wooden Helm", icon: "🪖", type: "helmet", armor: 2 },
+    { id: "wood_shield", name: "Wooden Shield", icon: "🛡️", type: "armor", armor: 4 },
+    { id: "wood_sword", name: "Wooden Sword", icon: "🗡️", type: "weapon", damage: 6 },
+  ],
+  2: [
+    { id: "ice_crown", name: "Ice Crown", icon: "👑", type: "helmet", armor: 5 },
+    { id: "ice_shield", name: "Ice Shield", icon: "🛡️", type: "armor", armor: 9 },
+    { id: "ice_sword", name: "Ice Sword", icon: "⚔️", type: "weapon", damage: 12 },
+  ],
+  3: [
+    { id: "ember_helm", name: "Ember Helm", icon: "🥽", type: "helmet", armor: 8 },
+    { id: "lava_bulwark", name: "Lava Bulwark", icon: "🛡️", type: "armor", armor: 14 },
+    { id: "magma_blade", name: "Magma Blade", icon: "🗡️", type: "weapon", damage: 20 },
+  ],
+  4: [
+    { id: "night_helm", name: "Night Helm", icon: "🎭", type: "helmet", armor: 12 },
+    { id: "void_buckler", name: "Void Buckler", icon: "🛡️", type: "armor", armor: 18 },
+    { id: "shadow_reaper", name: "Shadow Reaper", icon: "🗡️", type: "weapon", damage: 28 },
+  ],
+};
+
+function getUnlockedItemsByTier(tier: number) {
+  const items: Item[] = [];
+  for (let t = 1; t <= tier; t++) items.push(...(TIER_ITEMS[t] ?? []));
+  return items;
+}
 
 const initialSlots: Record<Slot, Item | null> = {
   head: null,
@@ -45,7 +115,7 @@ function xpNeededForNext(level: number) {
 }
 
 export default function EquipmentPage() {
-  const [inventory, setInventory] = useState<Item[]>(DEFAULT_ITEMS);
+  const [inventory, setInventory] = useState<Item[]>([]);
   const [slots, setSlots] = useState<Record<Slot, Item | null>>(initialSlots);
 
   // Gender
@@ -62,10 +132,7 @@ export default function EquipmentPage() {
   });
 
   /* ---------------- DERIVED STATS ---------------- */
-  const equipped = useMemo(
-    () => Object.values(slots).filter(Boolean) as Item[],
-    [slots]
-  );
+  const equipped = useMemo(() => Object.values(slots).filter(Boolean) as Item[], [slots]);
 
   const bonusArmor = useMemo(
     () => equipped.reduce((sum, it) => sum + (it.armor ?? 0), 0),
@@ -77,7 +144,7 @@ export default function EquipmentPage() {
     [equipped]
   );
 
-  // Base stats by level (easy to change later)
+  // Base stats by level
   const MAX_HEALTH = 100 + (level - 1) * 10;
   const BASE_ARMOR = 20 + (level - 1) * 3;
   const BASE_MAX_MANA = 60 + (level - 1) * 8;
@@ -95,7 +162,7 @@ export default function EquipmentPage() {
 
   const MAX_MANA = BASE_MAX_MANA + workoutManaBonus;
 
-  // (Equipment page) show full bars
+  // show full bars
   const healthNow = MAX_HEALTH;
   const manaNow = MAX_MANA;
 
@@ -115,17 +182,55 @@ export default function EquipmentPage() {
     setLevel(newLevel);
   }
 
-  /* ---------------- LOAD SAVE (equipment) ---------------- */
+  /* ---------------- LOAD SAVE (equipment + unlocks) ---------------- */
   useEffect(() => {
     const saved = localStorage.getItem("character_equipment");
-    if (!saved) return;
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      setSlots(parsed.slots ?? initialSlots);
+      setGender(parsed.gender ?? "guy");
+      setLevel(parsed.level ?? 1);
+      setXp(parsed.xp ?? 0);
 
-    const parsed = JSON.parse(saved);
-    setInventory(parsed.inventory ?? DEFAULT_ITEMS);
-    setSlots(parsed.slots ?? initialSlots);
-    setGender(parsed.gender ?? "guy");
-    setLevel(parsed.level ?? 1);
-    setXp(parsed.xp ?? 0);
+      // IMPORTANT: inventory is now derived from unlocks, BUT we keep any unequipped saved items if you had them.
+      // We merge: unlocked items + (saved inventory, filtered to unlocked).
+      const tier = getUnlockTier();
+      const unlocked = getUnlockedItemsByTier(tier);
+
+      const savedInv: Item[] = Array.isArray(parsed.inventory) ? parsed.inventory : [];
+      const unlockedIds = new Set(unlocked.map((i) => i.id));
+
+      // keep only items that are actually unlocked
+      const safeSavedInv = savedInv.filter((it) => unlockedIds.has(it.id));
+
+      // also ensure equipped items remain valid (if not unlocked, remove)
+      const safeSlots = (parsed.slots ?? initialSlots) as Record<Slot, Item | null>;
+      const cleanedSlots: Record<Slot, Item | null> = { ...initialSlots };
+      (Object.keys(cleanedSlots) as Slot[]).forEach((k) => {
+        const it = safeSlots?.[k];
+        cleanedSlots[k] = it && unlockedIds.has(it.id) ? it : null;
+      });
+      setSlots(cleanedSlots);
+
+      // inventory should include all unlocked items NOT currently equipped, plus safeSavedInv
+      const equippedIds = new Set(Object.values(cleanedSlots).filter(Boolean).map((i) => (i as Item).id));
+      const baseInv = unlocked.filter((it) => !equippedIds.has(it.id));
+
+      // dedupe by id
+      const merged = [...baseInv, ...safeSavedInv];
+      const seen = new Set<string>();
+      setInventory(merged.filter((it) => (seen.has(it.id) ? false : seen.add(it.id))));
+      return;
+    }
+
+    // no save yet: start fresh with unlock-based inventory (tier 0 => empty)
+    const tier = getUnlockTier();
+    const unlocked = getUnlockedItemsByTier(tier);
+    setInventory(unlocked);
+    setSlots(initialSlots);
+    setGender("guy");
+    setLevel(1);
+    setXp(0);
   }, []);
 
   /* ---------------- LOAD WORKOUT (dr_stats) ---------------- */
@@ -139,10 +244,8 @@ export default function EquipmentPage() {
         }
         const parsed = JSON.parse(raw);
         setWorkout({
-          strength:
-            typeof parsed.strength === "number" ? parsed.strength : WORKOUT_BASE_STR,
-          agility:
-            typeof parsed.agility === "number" ? parsed.agility : WORKOUT_BASE_AGI,
+          strength: typeof parsed.strength === "number" ? parsed.strength : WORKOUT_BASE_STR,
+          agility: typeof parsed.agility === "number" ? parsed.agility : WORKOUT_BASE_AGI,
         });
       } catch {
         setWorkout({ strength: WORKOUT_BASE_STR, agility: WORKOUT_BASE_AGI });
@@ -151,28 +254,28 @@ export default function EquipmentPage() {
 
     readWorkout();
 
-    // updates when another page writes to localStorage
     function onStorage(e: StorageEvent) {
       if (e.key === "dr_stats") readWorkout();
     }
-
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
   /* ---------------- SAVE ---------------- */
   function saveCharacter() {
-    localStorage.setItem(
-      "character_equipment",
-      JSON.stringify({ inventory, slots, gender, level, xp })
-    );
+    localStorage.setItem("character_equipment", JSON.stringify({ inventory, slots, gender, level, xp }));
     alert("Character saved!");
   }
 
   /* ---------------- RESET ---------------- */
   function resetCharacter() {
     if (!confirm("Reset character?")) return;
-    setInventory(DEFAULT_ITEMS);
+
+    // keep unlocks (boss progress), just reset equipment state
+    const tier = getUnlockTier();
+    const unlocked = getUnlockedItemsByTier(tier);
+
+    setInventory(unlocked);
     setSlots(initialSlots);
     setGender("guy");
     setLevel(1);
@@ -189,8 +292,7 @@ export default function EquipmentPage() {
     // - HEAD only helmet
     // - BOTH hands can hold armor OR weapon
     if (slot === "head" && item.type !== "helmet") return;
-    if ((slot === "leftHand" || slot === "rightHand") && item.type === "helmet")
-      return;
+    if ((slot === "leftHand" || slot === "rightHand") && item.type === "helmet") return;
 
     // Remove dragged item from inventory
     setInventory((prev) => prev.filter((i) => i.id !== itemId));
@@ -218,10 +320,7 @@ export default function EquipmentPage() {
             </button>
 
             <div style={S.topBarMid}>
-              <button
-                style={S.btn}
-                onClick={() => setGender((g) => (g === "guy" ? "girl" : "guy"))}
-              >
+              <button style={S.btn} onClick={() => setGender((g) => (g === "guy" ? "girl" : "guy"))}>
                 🔁 Switch
               </button>
 
@@ -229,10 +328,7 @@ export default function EquipmentPage() {
                 💾 Save
               </button>
 
-              <button
-                style={S.btn}
-                onClick={() => (window.location.href = "/equipment/skills")}
-              >
+              <button style={S.btn} onClick={() => (window.location.href = "/equipment/skills")}>
                 🎯 Skills
               </button>
 
@@ -240,7 +336,6 @@ export default function EquipmentPage() {
                 🏋️ Workout
               </button>
 
-              {/* Optional test button; remove anytime */}
               <button style={S.btn} onClick={() => gainXp(50)}>
                 +50 XP
               </button>
@@ -252,31 +347,43 @@ export default function EquipmentPage() {
           </div>
 
           <div style={S.layout}>
-            {/* INVENTORY */}
+            {/* INVENTORY (scrollable / swipe) */}
             <div style={S.inventory}>
               <h3 style={S.inventoryTitle}>Inventory</h3>
-              <div style={S.items}>
-                {inventory.map((item) => (
-                  <div
-                    key={item.id}
-                    draggable
-                    onDragStart={(e) => e.dataTransfer.setData("item", item.id)}
-                    style={S.item}
-                    className="tooltip-container"
-                  >
-                    <div style={{ fontSize: 34 }}>{item.icon}</div>
-                    <div style={{ fontSize: 12 }}>{item.name}</div>
 
-                    {/* TOOLTIP */}
-                    <div className="tooltip">
-                      <strong>{item.name}</strong>
-                      <div>
-                        {item.armor != null && `Armor +${item.armor}`}
-                        {item.damage != null && `ATK +${item.damage}`}
-                      </div>
+              <div style={S.inventoryScrollHint}>Swipe / scroll to browse</div>
+
+              <div style={S.items}>
+                {inventory.length === 0 ? (
+                  <div style={S.emptyInv}>
+                    <div style={{ fontWeight: 800, marginBottom: 6 }}>No gear yet!</div>
+                    <div style={{ fontSize: 12, opacity: 0.9 }}>
+                      Defeat biome bosses to unlock weapons & armor.
                     </div>
                   </div>
-                ))}
+                ) : (
+                  inventory.map((item) => (
+                    <div
+                      key={item.id}
+                      draggable
+                      onDragStart={(e) => e.dataTransfer.setData("item", item.id)}
+                      style={S.item}
+                      className="tooltip-container"
+                    >
+                      <div style={{ fontSize: 34 }}>{item.icon}</div>
+                      <div style={{ fontSize: 12 }}>{item.name}</div>
+
+                      {/* TOOLTIP */}
+                      <div className="tooltip">
+                        <strong>{item.name}</strong>
+                        <div>
+                          {item.armor != null && `Armor +${item.armor}`}
+                          {item.damage != null && `ATK +${item.damage}`}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
@@ -300,7 +407,9 @@ export default function EquipmentPage() {
                   <div style={S.levelLine}>LV {level}</div>
 
                   <div style={S.xpWrap}>
-                    <div style={S.statLabel}>XP: {xp}/{xpNeed}</div>
+                    <div style={S.statLabel}>
+                      XP: {xp}/{xpNeed}
+                    </div>
                     <div style={S.statBarBg}>
                       <div style={{ ...S.statBarFill, width: `${xpPct}%` }} />
                     </div>
@@ -312,7 +421,6 @@ export default function EquipmentPage() {
 
                   <div style={S.atkLine}>ATK: {currentAtk}</div>
 
-                  {/* workout link info */}
                   <div style={{ fontSize: 11, opacity: 0.9, marginTop: 6 }}>
                     Workout: STR {workout.strength} (+{workoutAtkBonus} ATK), AGI {workout.agility} (+{workoutManaBonus} MANA)
                   </div>
@@ -451,14 +559,36 @@ const S: Record<string, React.CSSProperties> = {
   },
   inventoryTitle: {
     textAlign: "center",
-    marginBottom: 12,
+    marginBottom: 6,
     color: "#4b2e1e",
   },
+  inventoryScrollHint: {
+    textAlign: "center",
+    fontSize: 11,
+    color: "#4b2e1e",
+    opacity: 0.85,
+    marginBottom: 10,
+  },
+
+  // ✅ make it scrollable (swipe on mobile)
   items: {
     display: "grid",
     gridTemplateColumns: "repeat(2, 1fr)",
     gap: 12,
+    maxHeight: 320,
+    overflowY: "auto",
+    paddingRight: 6,
+    WebkitOverflowScrolling: "touch",
+    touchAction: "pan-y",
   },
+  emptyInv: {
+    gridColumn: "1 / -1",
+    border: "3px dashed rgba(0,0,0,0.35)",
+    background: "rgba(255,255,255,0.55)",
+    padding: 14,
+    textAlign: "center",
+  },
+
   item: {
     border: "3px solid #333",
     background: "#1f2933",
