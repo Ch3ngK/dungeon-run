@@ -35,7 +35,7 @@ const DEFAULT_STATS: PlayerStats = {
 const UNLOCK_LEVEL: Record<string, number> = {
   "forest-ruins": 1,
   "ice-temple": 2,
-  "lava-cavern": 4,
+  "lava-caverns": 4,
   "shadow-fortress": 6,
 };
 
@@ -118,7 +118,24 @@ export default function GameBiomeSelectPage() {
 
   function enterBiome() {
     if (!isUnlocked) return;
+
+    // 1. Identify the storage key used by the map pages (e.g., "forest_state")
+    // We derive it from the biome.effect (forest, ice, lava, shadow)
+    const biomeKey = `${biome.effect || "forest"}_state`;
+
+    // 2. Clear the specific map data so it regenerates on load
+    localStorage.removeItem(biomeKey);
+    
+    // Optional: If you want to clear specific battle results too
+    localStorage.removeItem("lastBattleResult");
+    localStorage.removeItem("lastDefeatedEnemyId");
+    localStorage.removeItem("currentEnemyId");
+
+    // 3. Set the selection and navigate
     localStorage.setItem("selected_biome", biome.id);
+    
+    // Note: Ensure your file structure matches this path
+    // If your file is /app/biomes/forest-ruins/page.tsx, this is correct.
     window.location.href = `/biomes/${biome.id}`;
   }
 
